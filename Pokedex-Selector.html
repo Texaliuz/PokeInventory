@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PokéSelector — Generador de Imágenes</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --card: #16161f;
+    --card-hover: #1e1e2a;
+    --border: #2a2a3a;
+    --accent: #ffcc00;
+    --accent2: #3d9eff;
+    --accent3: #ff6b6b;
+    --shiny: #e879f9;
+    --text: #e8e8f0;
+    --text-muted: #6b6b8a;
+    --selected-glow: 0 0 20px rgba(255,204,0,0.4);
+    --shiny-glow: 0 0 22px rgba(232,121,249,0.55);
+    --grid-min: 138px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--bg); color:var(--text);
+    font-family:'Exo 2',sans-serif; min-height:100vh; overflow-x:hidden;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(rgba(61,158,255,0.03) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(61,158,255,0.03) 1px,transparent 1px);
+    background-size:40px 40px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position:sticky; top:0; z-index:100;
+    background:rgba(10,10,15,0.95); backdrop-filter:blur(20px);
+    border-bottom:1px solid var(--border);
+    padding:10px 20px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .logo {
+    font-family:'Orbitron',monospace; font-weight:900; font-size:1.25rem;
+    color:var(--accent); letter-spacing:2px;
+    text-shadow:0 0 20px rgba(255,204,0,0.5); white-space:nowrap;
+  }
+  .logo span { color:var(--accent2); }
+  .controls { display:flex; align-items:center; gap:9px; flex:1; flex-wrap:wrap; }
+  .search-wrap { position:relative; flex:1; min-width:175px; }
+  .search-wrap svg {
+    position:absolute; left:11px; top:50%; transform:translateY(-50%);
+    color:var(--text-muted); pointer-events:none;
+  }
+  #search {
+    width:100%; background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:8px 12px 8px 36px; color:var(--text);
+    font-family:'Exo 2',sans-serif; font-size:0.88rem; outline:none; transition:border-color 0.2s;
+  }
+  #search:focus { border-color:var(--accent2); }
+  select {
+    background:var(--surface); border:1px solid var(--border); border-radius:8px;
+    padding:8px 10px; color:var(--text); font-family:'Exo 2',sans-serif;
+    font-size:0.82rem; outline:none; cursor:pointer; transition:border-color 0.2s;
+  }
+  select:focus { border-color:var(--accent2); }
+
+  .shiny-toggle {
+    display:flex; align-items:center; gap:7px; background:var(--surface);
+    border:1px solid var(--border); border-radius:8px; padding:7px 12px;
+    cursor:pointer; font-size:0.8rem; white-space:nowrap;
+    transition:all 0.2s; user-select:none;
+  }
+  .shiny-toggle:hover { border-color:var(--shiny); }
+  .shiny-toggle.active { border-color:var(--shiny); background:rgba(232,121,249,0.08); color:var(--shiny); }
+
+  .load-badge {
+    display:flex; align-items:center; gap:7px; background:var(--surface);
+    border:1px solid var(--border); border-radius:8px; padding:7px 12px;
+    font-size:0.78rem; white-space:nowrap;
+  }
+  .load-badge span { color:var(--text-muted); }
+  #live-count { color:var(--accent2); font-family:'Orbitron',monospace; font-size:0.84rem; font-weight:700; }
+
+  .counter-badge {
+    display:flex; align-items:center; gap:6px; background:var(--surface);
+    border:1px solid var(--border); border-radius:8px; padding:7px 12px;
+    white-space:nowrap; font-size:0.82rem;
+  }
+  .counter-num {
+    font-family:'Orbitron',monospace; font-weight:700; font-size:1rem;
+    color:var(--accent); transition:color 0.3s;
+  }
+  .counter-num.warning { color:var(--accent3); }
+  .counter-label { color:var(--text-muted); }
+
+  .btn {
+    padding:8px 15px; border-radius:8px; border:none;
+    font-family:'Orbitron',monospace; font-size:0.72rem; font-weight:700;
+    letter-spacing:1px; cursor:pointer; transition:all 0.2s; white-space:nowrap;
+  }
+  .btn-generate { background:var(--accent); color:#0a0a0f; box-shadow:0 0 15px rgba(255,204,0,0.3); }
+  .btn-generate:hover:not(:disabled) { box-shadow:0 0 28px rgba(255,204,0,0.65); transform:translateY(-1px); }
+  .btn-generate:disabled { opacity:0.28; cursor:not-allowed; box-shadow:none; }
+  .btn-reset { background:transparent; color:var(--accent3); border:1px solid var(--accent3); }
+  .btn-reset:hover { background:rgba(255,107,107,0.1); }
+
+  /* ── TOAST ── */
+  #toast {
+    position:fixed; top:76px; left:50%;
+    transform:translateX(-50%) translateY(-16px);
+    background:var(--accent3); color:#fff; padding:10px 22px;
+    border-radius:10px; font-family:'Orbitron',monospace; font-size:0.72rem;
+    font-weight:700; letter-spacing:1px; z-index:9999;
+    opacity:0; transition:all 0.3s; pointer-events:none;
+    box-shadow:0 4px 20px rgba(255,107,107,0.4);
+  }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* ── MAIN ── */
+  main { position:relative; z-index:1; padding:20px 20px 48px; }
+  .section-title {
+    font-family:'Orbitron',monospace; font-size:0.66rem; letter-spacing:3px;
+    color:var(--text-muted); text-transform:uppercase;
+    margin-bottom:14px; display:flex; align-items:center; gap:10px;
+  }
+  .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ── LOADING ── */
+  #loading {
+    display:flex; flex-direction:column; align-items:center;
+    justify-content:center; padding:80px 20px; gap:18px;
+  }
+  .spinner {
+    width:48px; height:48px; border:3px solid var(--border);
+    border-top-color:var(--accent); border-radius:50%;
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #loading-text { font-family:'Orbitron',monospace; font-size:0.78rem; color:var(--text-muted); letter-spacing:2px; text-align:center; }
+  #loading-sub  { font-size:0.72rem; color:var(--text-muted); opacity:0.6; text-align:center; }
+  #progress-bar { width:280px; height:5px; background:var(--border); border-radius:3px; overflow:hidden; }
+  #progress-fill { height:100%; background:linear-gradient(90deg,var(--accent2),var(--accent)); border-radius:3px; transition:width 0.4s ease; width:0%; }
+
+  /* ── GALLERY ── */
+  #gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(var(--grid-min),1fr)); gap:10px; }
+
+  /* ── CARD ── */
+  .poke-card {
+    background:var(--card); border:1px solid var(--border); border-radius:10px;
+    padding:10px 8px 8px; cursor:pointer; transition:all 0.18s;
+    display:flex; flex-direction:column; align-items:center; gap:5px;
+    position:relative; overflow:hidden; user-select:none;
+  }
+  .poke-card::before {
+    content:''; position:absolute; inset:0; opacity:0; transition:opacity 0.2s;
+    background:radial-gradient(circle at 50% 30%,rgba(255,204,0,0.07),transparent 70%);
+  }
+  .poke-card:hover { background:var(--card-hover); border-color:rgba(61,158,255,0.35); transform:translateY(-2px); }
+  .poke-card:hover::before { opacity:1; }
+  .poke-card.selected { border-color:var(--accent); background:rgba(255,204,0,0.05); box-shadow:var(--selected-glow); }
+  .poke-card.selected::before { opacity:1; }
+  .poke-card.shiny-mode .poke-img { filter:drop-shadow(0 0 7px rgba(232,121,249,0.75)); }
+  .poke-card.shiny-mode.selected { border-color:var(--shiny); box-shadow:var(--shiny-glow); }
+  .poke-card.shiny-mode.selected::before {
+    background:radial-gradient(circle at 50% 30%,rgba(232,121,249,0.1),transparent 70%);
+    opacity:1;
+  }
+
+  /* form ribbon */
+  .form-tag {
+    position:absolute; top:0; left:0; z-index:5;
+    font-family:'Orbitron',monospace; font-size:0.5rem; font-weight:700;
+    padding:2px 6px; border-bottom-right-radius:6px; letter-spacing:0.5px; line-height:1.5;
+    background:var(--accent2); color:#0a0a0f;
+  }
+  .form-tag.mega    { background:#ff6b35; }
+  .form-tag.primal  { background:#b45309; }
+  .form-tag.gmax    { background:#c026d3; color:#fff; }
+  .form-tag.hisui   { background:#7c3aed; color:#fff; }
+  .form-tag.regional{ background:#059669; color:#fff; }
+
+  /* qty controls */
+  .qty-wrap { position:absolute; top:5px; right:5px; display:flex; align-items:center; gap:2px; z-index:10; }
+  .qty-btn {
+    width:17px; height:17px; background:var(--surface); border:1px solid var(--border);
+    border-radius:4px; color:var(--text); font-size:11px; line-height:1; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; transition:all 0.15s; padding:0;
+  }
+  .qty-btn:hover { background:var(--accent); color:#0a0a0f; border-color:var(--accent); }
+  .qty-input {
+    width:26px; height:17px; background:var(--surface); border:1px solid var(--border);
+    border-radius:4px; color:var(--accent); font-family:'Orbitron',monospace;
+    font-size:9px; font-weight:700; text-align:center; outline:none; padding:0;
+    -moz-appearance:textfield;
+  }
+  .qty-input::-webkit-outer-spin-button,
+  .qty-input::-webkit-inner-spin-button { -webkit-appearance:none; }
+  .qty-input:focus { border-color:var(--accent2); }
+
+  /* img wrapper */
+  .img-wrap { position:relative; width:74px; height:74px; flex-shrink:0; }
+  .poke-img {
+    width:74px; height:74px; object-fit:contain; image-rendering:pixelated;
+    filter:drop-shadow(0 2px 5px rgba(0,0,0,0.5));
+    transition:transform 0.18s, filter 0.18s; display:block;
+  }
+  .poke-img.lazy-placeholder { background:var(--surface); border-radius:6px; }
+  .poke-card:hover .poke-img { transform:translateY(-3px) scale(1.06); }
+  .shiny-star {
+    position:absolute; bottom:2px; left:2px; font-size:11px; z-index:6;
+    filter:drop-shadow(0 0 3px rgba(232,121,249,0.85));
+    opacity:0; transition:opacity 0.2s; pointer-events:none;
+  }
+  .poke-card.shiny-mode .shiny-star { opacity:1; }
+
+  .poke-name { font-size:0.68rem; font-weight:500; text-align:center; color:var(--text); text-transform:capitalize; line-height:1.3; word-break:break-word; max-width:100%; }
+  .poke-num  { font-family:'Orbitron',monospace; font-size:0.58rem; color:var(--text-muted); }
+  .type-badges { display:flex; gap:4px; flex-wrap:wrap; justify-content:center; }
+  .type-badge  { font-size:0.58rem; padding:2px 6px; border-radius:10px; font-weight:500; opacity:0.9; }
+
+  /* ── RENDER TARGET ── */
+  #render-target {
+    position:fixed; left:-99999px; top:0;
+    background:#0a0a0f; padding:16px;
+    display:grid; grid-template-columns:repeat(10,92px); gap:6px;
+  }
+  .render-item {
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    background:#16161f; border:1px solid #2a2a3a; border-radius:8px;
+    padding:7px 4px 5px; width:92px; position:relative;
+  }
+  .render-item img { width:62px; height:62px; image-rendering:pixelated; display:block; }
+  .r-name { font-size:6.5px; color:#e8e8f0; text-align:center; font-family:Arial,sans-serif; text-transform:capitalize; word-break:break-word; line-height:1.25; width:100%; }
+  .r-num  { font-size:5.5px; color:#6b6b8a; font-family:Arial,monospace; }
+  .r-qty  {
+    position:absolute; bottom:5px; right:5px;
+    background:#ffcc00; color:#0a0a0f; font-family:Arial,sans-serif;
+    font-size:7px; font-weight:900; padding:1px 4px; border-radius:5px;
+    line-height:1.3; box-shadow:0 1px 4px rgba(0,0,0,0.9); z-index:10;
+  }
+  .r-shiny { position:absolute; top:4px; left:4px; font-size:9px; line-height:1; }
+
+  /* ── GEN OVERLAY ── */
+  #gen-overlay {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88);
+    z-index:9000; align-items:center; justify-content:center; flex-direction:column; gap:18px;
+  }
+  #gen-overlay.show { display:flex; }
+  .gen-title { font-family:'Orbitron',monospace; font-size:0.9rem; color:var(--accent); letter-spacing:3px; animation:gpulse 1s ease-in-out infinite alternate; }
+  @keyframes gpulse { from{opacity:0.5} to{opacity:1} }
+
+  /* ── TYPE COLORS ── */
+  .t-fire{background:#ff6b3520;color:#ff6b35}.t-water{background:#3d9eff20;color:#3d9eff}
+  .t-grass{background:#4caf5020;color:#4caf50}.t-electric{background:#ffcc0020;color:#ffcc00}
+  .t-psychic{background:#e91e6320;color:#e91e63}.t-ice{background:#00bcd420;color:#00bcd4}
+  .t-dragon{background:#7b1fa220;color:#ab47bc}.t-dark{background:#37474f20;color:#90a4ae}
+  .t-fairy{background:#f48fb120;color:#f48fb1}.t-normal{background:#78909c20;color:#90a4ae}
+  .t-fighting{background:#bf360c20;color:#ff7043}.t-flying{background:#7986cb20;color:#7986cb}
+  .t-poison{background:#7b1fa220;color:#ce93d8}.t-ground{background:#8d6e6320;color:#bcaaa4}
+  .t-rock{background:#78909c20;color:#a5d6a7}.t-bug{background:#558b2f20;color:#aed581}
+  .t-ghost{background:#4527a020;color:#9575cd}.t-steel{background:#546e7a20;color:#80cbc4}
+  .t-stellar{background:#7986cb20;color:#c5cae9}.t-unknown{background:#37474f20;color:#78909c}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">POKÉ<span>SELECT</span></div>
+  <div class="controls">
+    <div class="search-wrap">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="search" placeholder="Buscar nombre, forma, tipo...">
+    </div>
+    <select id="filter-gen">
+      <option value="">Todas las generaciones</option>
+      <option value="1">Gen 1 — Kanto</option>
+      <option value="2">Gen 2 — Johto</option>
+      <option value="3">Gen 3 — Hoenn</option>
+      <option value="4">Gen 4 — Sinnoh</option>
+      <option value="5">Gen 5 — Unova</option>
+      <option value="6">Gen 6 — Kalos</option>
+      <option value="7">Gen 7 — Alola</option>
+      <option value="8">Gen 8 — Galar / Hisui</option>
+      <option value="9">Gen 9 — Paldea</option>
+      <option value="regional">Solo regionales</option>
+      <option value="mega">Solo Mega / Primigenios</option>
+      <option value="gmax">Solo Gigantamax</option>
+      <option value="variant">Solo variantes de forma</option>
+    </select>
+    <select id="filter-type">
+      <option value="">Todos los tipos</option>
+      <option value="fire">Fuego</option><option value="water">Agua</option>
+      <option value="grass">Planta</option><option value="electric">Eléctrico</option>
+      <option value="psychic">Psíquico</option><option value="ice">Hielo</option>
+      <option value="dragon">Dragón</option><option value="dark">Siniestro</option>
+      <option value="fairy">Hada</option><option value="normal">Normal</option>
+      <option value="fighting">Lucha</option><option value="flying">Volador</option>
+      <option value="poison">Veneno</option><option value="ground">Tierra</option>
+      <option value="rock">Roca</option><option value="bug">Bicho</option>
+      <option value="ghost">Fantasma</option><option value="steel">Acero</option>
+    </select>
+    <div class="shiny-toggle" id="shiny-toggle" title="Alternar sprites shiny">
+      <span>✦</span> Shiny
+    </div>
+  </div>
+  <div class="load-badge"><span>Cargados:</span> <span id="live-count">0</span></div>
+  <div class="counter-badge">
+    <span class="counter-num" id="counter">0</span>
+    <span class="counter-label">/ 100 únicos &nbsp;·&nbsp; total: <span id="counter-total">0</span></span>
+  </div>
+  <button class="btn btn-reset" id="btn-reset">↺ Reiniciar</button>
+  <button class="btn btn-generate" id="btn-generate" disabled>⬇ Generar Imagen</button>
+</header>
+
+<main>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div id="loading-text">INICIALIZANDO POKÉDEX UNIVERSAL...</div>
+    <div id="loading-sub">Cargando especies y todas sus formas</div>
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+  </div>
+  <div class="section-title" id="gallery-title" style="display:none"></div>
+  <div id="gallery"></div>
+</main>
+
+<div id="render-target"></div>
+<div id="toast">⚠ LÍMITE: 100 POKÉMON ÚNICOS</div>
+<div id="gen-overlay">
+  <div class="gen-title">GENERANDO IMAGEN...</div>
+  <div class="spinner"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  CONSTANTS & GLOBAL STATE
+// ══════════════════════════════════════════════════════
+const MAX_UNIQUE  = 100;
+const BATCH_SIZE  = 50;    // species fetched in parallel per batch
+const BASE        = 'https://pokeapi.co/api/v2';
+
+let allPokemon = [];       // full variety list, loaded progressively
+let filtered   = [];       // result after filters
+let inventory  = {};       // { [name]: qty }
+let shinyMode  = false;
+
+const GEN_RANGES = [
+  [1,151],[152,251],[252,386],[387,493],
+  [494,649],[650,721],[722,809],[810,1025]
+];
+
+const REGIONAL_KW = ['alola','alolan','galar','galarian','hisui','hisuian','paldea','paldean'];
+
+// ══════════════════════════════════════════════════════
+//  NAME NORMALIZER
+//  Converts API slug to human-readable display name.
+//  Examples:
+//    charizard-gmax       → "Charizard (G-Max)"
+//    pikachu-alola        → "Pikachu (Alola)"
+//    mewtwo-mega-x        → "Mewtwo (Mega X)"
+//    mr-mime-galar        → "Mr Mime (Galar)"
+//    castform-snowy       → "Castform (Nevado)"
+// ══════════════════════════════════════════════════════
+const SUFFIX_MAP = {
+  // forms
+  'gmax':'G-Max','mega':'Mega','mega-x':'Mega X','mega-y':'Mega Y',
+  'primal':'Primigenio','origin':'Origen','sky':'Sky','land':'Tierra',
+  'zen':'Zen','standard':'','ordinary':'','incarnate':'',
+  'therian':'Tótem','black':'Negro','white':'Blanco',
+  'resolute':'Resuelto','pirouette':'Pirueta','aria':'Aria',
+  'baile':'Baile','pau':"Pa'u",'sensu':'Sensu',
+  'blue':'Azul','red':'Rojo','yellow':'Amarillo',
+  'crowned':'Coronado','eternamax':'Eternamax',
+  'low-key':'Low Key','amped':'Amped',
+  'hero':'Héroe','aqua':'Acua','blaze':'Llama',
+  'combat':'Combate','rapid-strike':'Golpe Rápido','single-strike':'Golpe Único',
+  'hangry':'Hambrienta','full-belly':'Llena',
+  'gorging':'Devoradora','gulping':'Tragona',
+  'curly':'Rizado','droopy':'Caído','stretchy':'Estirado',
+  'phony':'Falsa','antique':'Antigua',
+  'three-segment':'Tres Segmentos','two-segment':'Dos Segmentos',
+  'female':'(F)','male':'(M)',
+  'plant':'Planta','sandy':'Arena','trash':'Basura',
+  'fan':'Ventilador','frost':'Hielo','heat':'Calor','mow':'Cortacésped',
+  'spin':'Spin','wash':'Lavado',
+  'attack':'Ataque','defense':'Defensa','speed':'Velocidad',
+  'normal':'','sunny':'Soleado','rainy':'Lluvioso','snowy':'Nevado',
+  'dawn':'Aurora','dusk':'Crepúsculo','midnight':'Medianoche',
+  'dusk-mane':'Dusk Mane','dawn-wings':'Dawn Wings',
+  'ultra':'Ultra','disguised':'Disfrazado','busted':'Descubierto',
+  'school':'Banco','totem':'Tótem','complete':'Completo',
+  'fifty':'50%','ten':'10%','null':'',
+  'rapid-strike-gmax':'Rapid Strike G-Max',
+  // regional
+  'alola':'Alola','alolan':'Alola','galar':'Galar','galarian':'Galar',
+  'hisui':'Hisui','hisuian':'Hisui','paldea':'Paldea','paldean':'Paldea',
+  // known multi-word base names (to protect from splitting)
+  'mr':'mr','mime':'mime','jr':'jr','nidoran':'nidoran',
+  'ho':'ho','oh':'oh','tapu':'tapu',
+};
+
+// Base names that are themselves hyphenated
+const HYPHEN_BASES = new Set([
+  'mr-mime','ho-oh','tapu-koko','tapu-lele','tapu-bulu','tapu-fini',
+  'wo-chien','chien-pao','ting-lu','chi-yu','mr-rime','jangmo-o',
+  'hakamo-o','kommo-o','porygon-z','type-null','great-tusk','scream-tail',
+  'brute-bonnet','flutter-mane','slither-wing','sandy-shocks','iron-treads',
+  'iron-bundle','iron-hands','iron-jugulis','iron-moth','iron-thorns',
+  'roaring-moon','iron-valiant','walking-wake','iron-leaves','gouging-fire',
+  'raging-bolt','iron-boulder','iron-crown',
+]);
+
+function normalizeName(raw) {
+  if (!raw.includes('-')) return cap(raw);
+
+  // Check known hyphen bases first
+  for (const base of HYPHEN_BASES) {
+    if (raw === base) return base.split('-').map(cap).join(' ');
+    if (raw.startsWith(base + '-')) {
+      const suffix = raw.slice(base.length + 1);
+      const form   = resolveSuffix(suffix);
+      const baseName = base.split('-').map(cap).join(' ');
+      return form ? `${baseName} (${form})` : baseName;
+    }
+  }
+
+  const parts = raw.split('-');
+  // Try to peel known suffixes from the right
+  let formParts = [];
+  let baseParts = [...parts];
+
+  while (baseParts.length > 1) {
+    const last = baseParts[baseParts.length - 1];
+    const prev = baseParts.length > 2 ? baseParts[baseParts.length - 2] : null;
+    const twoKey = prev ? `${prev}-${last}` : null;
+
+    if (twoKey && SUFFIX_MAP.hasOwnProperty(twoKey)) {
+      const lbl = SUFFIX_MAP[twoKey];
+      if (lbl) formParts.unshift(lbl);
+      baseParts.splice(baseParts.length - 2, 2);
+      continue;
+    }
+    if (SUFFIX_MAP.hasOwnProperty(last)) {
+      const lbl = SUFFIX_MAP[last];
+      if (lbl) formParts.unshift(lbl);
+      baseParts.pop();
+      continue;
+    }
+    break;
+  }
+
+  const baseName = baseParts.map(cap).join(' ');
+  const formStr  = formParts.filter(Boolean).join(' ');
+  return formStr ? `${baseName} (${formStr})` : baseName;
+}
+
+function resolveSuffix(s) {
+  if (SUFFIX_MAP.hasOwnProperty(s)) return SUFFIX_MAP[s];
+  // multi-part suffix
+  const parts = s.split('-');
+  const mapped = parts.map(p => SUFFIX_MAP[p] ?? cap(p)).filter(Boolean);
+  return mapped.join(' ');
+}
+
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
+// ══════════════════════════════════════════════════════
+//  FORM CLASSIFIER
+// ══════════════════════════════════════════════════════
+function classifyForm(name) {
+  const n = name.toLowerCase();
+  if (/\bgmax\b/.test(n))                   return 'gmax';
+  if (/\bprimal\b/.test(n))                 return 'primal';
+  if (/\bmega\b/.test(n))                   return 'mega';
+  if (/\bhisui(an)?\b/.test(n))             return 'hisui';
+  if (REGIONAL_KW.some(r => n.includes(r))) return 'regional';
+  return null;
+}
+
+function getRegionalLabel(name) {
+  const n = name.toLowerCase();
+  if (n.includes('alola'))  return 'ALOLA';
+  if (n.includes('galar'))  return 'GALAR';
+  if (n.includes('hisui'))  return 'HISUI';
+  if (n.includes('paldea')) return 'PALDEA';
+  return 'REG';
+}
+
+function getGen(speciesId) {
+  for (let i = 0; i < GEN_RANGES.length; i++) {
+    if (speciesId >= GEN_RANGES[i][0] && speciesId <= GEN_RANGES[i][1]) return i + 1;
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════════════
+//  DOM REFS
+// ══════════════════════════════════════════════════════
+const gallery      = document.getElementById('gallery');
+const counter      = document.getElementById('counter');
+const counterTotal = document.getElementById('counter-total');
+const btnGenerate  = document.getElementById('btn-generate');
+const btnReset     = document.getElementById('btn-reset');
+const toastEl      = document.getElementById('toast');
+const searchEl     = document.getElementById('search');
+const filterGen    = document.getElementById('filter-gen');
+const filterType   = document.getElementById('filter-type');
+const shinyToggle  = document.getElementById('shiny-toggle');
+const loadingEl    = document.getElementById('loading');
+const loadingText  = document.getElementById('loading-text');
+const loadingSub   = document.getElementById('loading-sub');
+const progressFill = document.getElementById('progress-fill');
+const galleryTitle = document.getElementById('gallery-title');
+const liveCount    = document.getElementById('live-count');
+const genOverlay   = document.getElementById('gen-overlay');
+
+// ══════════════════════════════════════════════════════
+//  API HELPERS
+// ══════════════════════════════════════════════════════
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function fetchJSON(url, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const r = await fetch(url);
+      if (r.ok)      return r.json();
+      if (r.status === 404) return null;
+    } catch {
+      if (i === retries - 1) return null;
+      await sleep(250 * (i + 1));
+    }
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════════════
+//  PROCESS ONE SPECIES → extract all varieties
+// ══════════════════════════════════════════════════════
+async function processSpecies(sp) {
+  if (!sp?.varieties?.length) return [];
+
+  // Fetch all variety details in parallel
+  const details = await Promise.all(
+    sp.varieties.map(v => fetchJSON(v.pokemon.url))
+  );
+
+  const results = [];
+  for (let i = 0; i < sp.varieties.length; i++) {
+    const entry  = sp.varieties[i];
+    const detail = details[i];
+    if (!detail) continue;
+
+    const spriteNormal =
+      detail.sprites?.other?.['official-artwork']?.front_default ||
+      detail.sprites?.front_default || null;
+
+    if (!spriteNormal) continue;  // no artwork → skip
+
+    const spriteShiny =
+      detail.sprites?.other?.['official-artwork']?.front_shiny ||
+      detail.sprites?.front_shiny ||
+      spriteNormal;  // fallback to normal
+
+    const types   = (detail.types || []).map(t => t.type.name);
+    const name    = entry.pokemon.name;
+    const formTag = classifyForm(name);
+    const isReg   = REGIONAL_KW.some(r => name.toLowerCase().includes(r));
+    const isMega  = /\b(mega|primal)\b/.test(name.toLowerCase());
+    const isGmax  = /\bgmax\b/.test(name.toLowerCase());
+    const isVar   = !entry.is_default && !isReg && !isMega && !isGmax;
+
+    results.push({
+      id:          detail.id,
+      name,
+      displayName: normalizeName(name),
+      speciesName: sp.name,
+      speciesId:   sp.id,
+      spriteNormal,
+      spriteShiny,
+      types,
+      formTag,
+      isDefault: entry.is_default,
+      regional:  isReg,
+      mega:      isMega,
+      gmax:      isGmax,
+      variant:   isVar,
+      gen:       getGen(sp.id),
+    });
+  }
+  return results;
+}
+
+// ══════════════════════════════════════════════════════
+//  MAIN LOADER — streaming batches with Promise.all
+// ══════════════════════════════════════════════════════
+async function loadAllPokemon() {
+  loadingText.textContent = 'CARGANDO ÍNDICE DE ESPECIES...';
+  progressFill.style.width = '3%';
+
+  const listData = await fetchJSON(`${BASE}/pokemon-species?limit=2000`);
+  if (!listData?.results) throw new Error('No se pudo obtener la lista de especies.');
+
+  const speciesUrls = listData.results.map(s => s.url);
+  const total       = speciesUrls.length;
+
+  loadingSub.textContent = `${total} especies encontradas — cargando variedades en paralelo...`;
+
+  let processed = 0;
+
+  for (let i = 0; i < total; i += BATCH_SIZE) {
+    const batchUrls    = speciesUrls.slice(i, i + BATCH_SIZE);
+
+    // Fetch all species data in this batch simultaneously
+    const batchSpecies = await Promise.all(batchUrls.map(url => fetchJSON(url)));
+
+    // For each species, process all its varieties (also in parallel internally)
+    const batchVarieties = await Promise.all(batchSpecies.map(sp => processSpecies(sp)));
+
+    for (const vars of batchVarieties) {
+      allPokemon.push(...vars);
+    }
+
+    processed = Math.min(i + BATCH_SIZE, total);
+    const pct = 3 + (processed / total) * 93;
+    progressFill.style.width = pct.toFixed(1) + '%';
+    loadingText.textContent  = `CARGANDO... ${processed} / ${total} especies`;
+    liveCount.textContent    = allPokemon.length.toLocaleString();
+
+    // Yield to browser paint so UI doesn't freeze
+    await sleep(0);
+  }
+
+  // Sort: speciesId ASC → default form first → alpha
+  allPokemon.sort((a, b) => {
+    if (a.speciesId !== b.speciesId) return a.speciesId - b.speciesId;
+    if (a.isDefault && !b.isDefault) return -1;
+    if (!a.isDefault && b.isDefault) return  1;
+    return a.name.localeCompare(b.name);
+  });
+
+  progressFill.style.width = '100%';
+  liveCount.textContent    = allPokemon.length.toLocaleString();
+
+  await sleep(200);
+  loadingEl.style.display    = 'none';
+  galleryTitle.style.display = 'flex';
+  applyFilters();
+}
+
+// ══════════════════════════════════════════════════════
+//  INTERSECTION OBSERVER — lazy image loading
+// ══════════════════════════════════════════════════════
+const imgObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    const img = entry.target;
+    const src = img.dataset.src;
+    if (src) {
+      img.src = src;
+      img.removeAttribute('data-src');
+      img.classList.remove('lazy-placeholder');
+    }
+    imgObserver.unobserve(img);
+  }
+}, { rootMargin: '250px' });
+
+// ══════════════════════════════════════════════════════
+//  FILTER ENGINE (debounced, in-memory)
+// ══════════════════════════════════════════════════════
+let filterTimer = null;
+function scheduleFilter() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(applyFilters, 100);
+}
+
+function applyFilters() {
+  const q     = searchEl.value.toLowerCase().trim();
+  const genF  = filterGen.value;
+  const typeF = filterType.value;
+
+  filtered = allPokemon.filter(p => {
+    // Global search: name, displayName, speciesName
+    if (q) {
+      const hay = p.displayName.toLowerCase() + ' ' + p.name + ' ' + p.speciesName;
+      if (!hay.includes(q)) return false;
+    }
+    if (typeF && !p.types.includes(typeF)) return false;
+
+    switch (genF) {
+      case 'regional': return p.regional;
+      case 'mega':     return p.mega;
+      case 'gmax':     return p.gmax;
+      case 'variant':  return p.variant;
+      case '':         return true;
+      default:         return p.gen === parseInt(genF, 10);
+    }
+  });
+
+  renderGallery();
+}
+
+function renderGallery() {
+  galleryTitle.textContent = `${filtered.length.toLocaleString()} POKÉMON`;
+  gallery.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const p of filtered) frag.appendChild(createCard(p));
+  gallery.appendChild(frag);
+}
+
+// ══════════════════════════════════════════════════════
+//  CARD BUILDER
+// ══════════════════════════════════════════════════════
+function createCard(p) {
+  const qty  = inventory[p.name] || 0;
+  const card = document.createElement('div');
+  card.className = ['poke-card', qty > 0 ? 'selected' : '', shinyMode ? 'shiny-mode' : '']
+    .filter(Boolean).join(' ');
+  card.dataset.name = p.name;
+
+  // ── form ribbon ──
+  if (p.formTag) {
+    const ft = document.createElement('div');
+    const labels = { gmax:'G-MAX', mega:'MEGA', primal:'PRIMIGENIO', hisui:'HISUI', regional: getRegionalLabel(p.name) };
+    ft.className   = `form-tag ${p.formTag}`;
+    ft.textContent = labels[p.formTag] || p.formTag.toUpperCase();
+    card.appendChild(ft);
+  }
+
+  // ── qty controls (stopPropagation so card-click doesn't fire) ──
+  const qw = document.createElement('div');
+  qw.className = 'qty-wrap';
+  qw.addEventListener('click', e => e.stopPropagation());
+
+  const bm = document.createElement('button'); bm.className='qty-btn'; bm.textContent='−';
+  const qi = document.createElement('input');
+  qi.type='number'; qi.className='qty-input'; qi.min=0; qi.max=999; qi.value=qty;
+  const bp = document.createElement('button'); bp.className='qty-btn'; bp.textContent='+';
+
+  function setQty(val) {
+    const prev   = inventory[p.name] || 0;
+    const unique = Object.values(inventory).filter(v => v > 0).length;
+    const next   = Math.max(0, Math.min(999, parseInt(val) || 0));
+
+    if (next > 0 && prev === 0 && unique >= MAX_UNIQUE) { showToast(); qi.value = prev; return; }
+
+    if (next === 0) { delete inventory[p.name]; card.classList.remove('selected'); }
+    else            { inventory[p.name] = next;  card.classList.add('selected'); }
+    qi.value = next;
+    updateCounter();
+  }
+
+  bm.addEventListener('click', () => setQty((inventory[p.name] || 0) - 1));
+  bp.addEventListener('click', () => setQty((inventory[p.name] || 0) + 1));
+  qi.addEventListener('change', () => setQty(qi.value));
+  qi.addEventListener('keydown', e => { if (e.key === 'Enter') setQty(qi.value); });
+
+  qw.append(bm, qi, bp);
+  card.appendChild(qw);
+
+  // ── image (lazy via IntersectionObserver) ──
+  const iw = document.createElement('div'); iw.className = 'img-wrap';
+  const img = document.createElement('img');
+  img.className = 'poke-img lazy-placeholder';
+  img.alt = p.displayName;
+  img.dataset.src = shinyMode ? p.spriteShiny : p.spriteNormal;
+  imgObserver.observe(img);
+  iw.appendChild(img);
+
+  const star = document.createElement('span'); star.className='shiny-star'; star.textContent='✦';
+  iw.appendChild(star);
+  card.appendChild(iw);
+
+  // ── text info ──
+  const nameEl = document.createElement('div'); nameEl.className='poke-name'; nameEl.textContent=p.displayName;
+  const numEl  = document.createElement('div'); numEl.className='poke-num';   numEl.textContent='#'+String(p.speciesId).padStart(4,'0');
+  card.append(nameEl, numEl);
+
+  if (p.types.length) {
+    const tw = document.createElement('div'); tw.className='type-badges';
+    p.types.slice(0, 2).forEach(t => {
+      const tb = document.createElement('span'); tb.className=`type-badge t-${t}`; tb.textContent=t;
+      tw.appendChild(tb);
+    });
+    card.appendChild(tw);
+  }
+
+  // card body click = +1
+  card.addEventListener('click', () => setQty((inventory[p.name] || 0) + 1));
+  return card;
+}
+
+// ══════════════════════════════════════════════════════
+//  COUNTER
+// ══════════════════════════════════════════════════════
+function updateCounter() {
+  const unique = Object.values(inventory).filter(v => v > 0).length;
+  const total  = Object.values(inventory).reduce((s, v) => s + v, 0);
+  counter.textContent      = unique;
+  counterTotal.textContent = total;
+  counter.classList.toggle('warning', unique >= 90);
+  btnGenerate.disabled = unique === 0;
+}
+
+function showToast() {
+  toastEl.classList.add('show');
+  setTimeout(() => toastEl.classList.remove('show'), 2600);
+}
+
+// ══════════════════════════════════════════════════════
+//  SHINY TOGGLE
+// ══════════════════════════════════════════════════════
+shinyToggle.addEventListener('click', () => {
+  shinyMode = !shinyMode;
+  shinyToggle.classList.toggle('active', shinyMode);
+
+  // Update all currently rendered card images
+  gallery.querySelectorAll('.poke-card').forEach(card => {
+    const p = allPokemon.find(x => x.name === card.dataset.name);
+    if (!p) return;
+    card.classList.toggle('shiny-mode', shinyMode);
+    const img = card.querySelector('.poke-img');
+    if (!img) return;
+    const newSrc = shinyMode ? p.spriteShiny : p.spriteNormal;
+    // if already loaded (has src), swap; if lazy, update data-src
+    if (img.src && !img.dataset.src) img.src = newSrc;
+    else img.dataset.src = newSrc;
+  });
+});
+
+// ══════════════════════════════════════════════════════
+//  RESET
+// ══════════════════════════════════════════════════════
+btnReset.addEventListener('click', () => {
+  inventory = {};
+  gallery.querySelectorAll('.poke-card.selected').forEach(c => {
+    c.classList.remove('selected');
+    const qi = c.querySelector('.qty-input');
+    if (qi) qi.value = 0;
+  });
+  updateCounter();
+});
+
+// ══════════════════════════════════════════════════════
+//  GENERATE IMAGE (html2canvas, 10-col grid)
+// ══════════════════════════════════════════════════════
+btnGenerate.addEventListener('click', async () => {
+  const active = Object.keys(inventory).filter(k => inventory[k] > 0);
+  if (!active.length) return;
+
+  genOverlay.classList.add('show');
+  await sleep(80);
+
+  const selList = allPokemon.filter(p => active.includes(p.name));
+  const rt      = document.getElementById('render-target');
+  rt.innerHTML  = '';
+
+  for (const p of selList) {
+    const qty  = inventory[p.name] || 1;
+    const item = document.createElement('div');
+    item.className = 'render-item';
+
+    if (shinyMode) {
+      const s = document.createElement('span'); s.className='r-shiny'; s.textContent='✦'; item.appendChild(s);
+    }
+
+    const iw = document.createElement('div'); iw.style.cssText='position:relative;width:62px;height:62px;';
+    const img = document.createElement('img');
+    img.src         = shinyMode ? p.spriteShiny : p.spriteNormal;
+    img.crossOrigin = 'anonymous';
+    img.style.cssText = 'width:62px;height:62px;image-rendering:pixelated;display:block;';
+    iw.appendChild(img);
+
+    const badge = document.createElement('div');
+    badge.className   = 'r-qty';
+    badge.textContent = 'x' + qty;
+    iw.appendChild(badge);
+    item.appendChild(iw);
+
+    const ne = document.createElement('div'); ne.className='r-name'; ne.textContent=p.displayName;
+    const nu = document.createElement('div'); nu.className='r-num';  nu.textContent='#'+String(p.speciesId).padStart(4,'0');
+    item.append(ne, nu);
+    rt.appendChild(item);
+  }
+
+  // Wait for all images
+  await new Promise(res => {
+    const imgs   = rt.querySelectorAll('img');
+    let   loaded = 0;
+    if (!imgs.length) { res(); return; }
+    imgs.forEach(img => {
+      const done = () => { if (++loaded >= imgs.length) res(); };
+      if (img.complete) done(); else { img.onload = done; img.onerror = done; }
+    });
+    setTimeout(res, 10000);
+  });
+
+  try {
+    const canvas = await html2canvas(rt, {
+      backgroundColor: '#0a0a0f',
+      scale:           1.6,
+      useCORS:         true,
+      allowTaint:      false,
+      logging:         false,
+    });
+    const link    = document.createElement('a');
+    link.download = `pokedex-inventario-${Date.now()}.png`;
+    link.href     = canvas.toDataURL('image/png');
+    link.click();
+  } catch (e) {
+    console.error('html2canvas error:', e);
+    alert('Error al generar la imagen. Revisá la consola.');
+  } finally {
+    genOverlay.classList.remove('show');
+    rt.innerHTML = '';
+  }
+});
+
+// ══════════════════════════════════════════════════════
+//  LISTENERS
+// ══════════════════════════════════════════════════════
+searchEl.addEventListener('input',   scheduleFilter);
+filterGen.addEventListener('change', applyFilters);
+filterType.addEventListener('change', applyFilters);
+
+// ══════════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════════
+loadAllPokemon().catch(e => {
+  loadingText.textContent = 'ERROR AL CARGAR — RECARGÁ LA PÁGINA';
+  loadingSub.textContent  = e?.message || '';
+  console.error(e);
+});
+</script>
+</body>
+</html>
